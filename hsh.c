@@ -1,91 +1,190 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <unistd.h>
-#include <signal.h>
-
-#define	MAX_SIZE_CMD	256
-#define	MAX_SIZE_ARG	16
-char cmd[MAX_SIZE_CMD];
-char *argv[MAX_SIZE_ARG];
-pid_t pid;
-char i;
-void get_cmd(void);
-void convert_cmd(void);
-void c_shell(void);
-void log_handle(int sig);
-int main(void)
+#include "hsh.h"
+/**
+ * main - Prints the prompt and calls the functions needed to run the shell.
+ * @ac: argument counter
+ * @av: argument vector
+ * Return: Always 0.
+ */
+int main(__attribute__((unused)) int ac, char **av)
 {
-signal(SIGCHLD, log_handle);
-c_shell();
+char *line = NULL;
+size_t len = 0;
+int i = 1, count = 0;
+while (i != -1)
+{
+count++;
+signal(SIGINT, signal_handler);
+if (isatty(STDIN_FILENO) == 1)
+write(STDOUT_FILENO, "$ ", 2);
+i = getline(&line, &len, stdin);
+if (i < 0)
+{
+free(line);
+exit(0);
+}
+str_to_array(line, count, av);
+free(line);
+line = NULL;
+}
 return (0);
 }
-void c_shell(void)
-{
-while (1)
-{
-get_cmd();
-if (!strcmp("", cmd))
-continue;
-if (!strcmp("exit", cmd))
-break;
-convert_cmd();
 
-pid = fork();
-if (pid == -1)
+/**
+ * str_to_array - Takes a string and turns it into a list of strings.
+ * @cmd_line: string.
+ * @count: line counter
+ * @argv: argument vector
+ * Return: A list of strings.
+ */
+int str_to_array(char *cmd_line, int count, char **argv)
 {
-printf("failed to create a child\n");
+char **token_array, *token, *tmp = 0, *exit = {"exit"}, *envi = {"env"};
+int i = 0, j = 0, k = 0, l = 0, exit_status = 0;
+tmp = _strdup(cmd_line);
+token = strtok(tmp, strtok_delim);
+while (token != NULL)
+token = strtok(NULL, strtok_delim), i++;
+free(tmp);
+if (i != 0)
+{
+token_array = _calloc((i + 1), (sizeof(char *)));
+if (token_array == NULL)
+return ('\0');
+token = strtok(cmd_line, strtok_delim);
+while (token != NULL)
+{
+token_array[j] = _calloc((_strlen(token) + 1), sizeof(char));
+if (token_array[j] == NULL)
+{
+while (k < j)
+free(token_array[k]), k++;
+free(token_array);
 }
-else if (pid == 0)
+_strncpy(token_array[j], token, _strlen(token) + 1);
+token = strtok(NULL, strtok_delim), j++;
+}
+token_array[j] = NULL;
+if (_strcmp(token_array[0], envi) == 0 || _strcmp(token_array[0], "printenv") == 0)
+_env();
+if (_strcmp(token_array[0], exit) == 0)
+a_exit(token_array, i, cmd_line, exit_status);
+exit_status = _exec(token_array, i, cmd_line, count, argv);
+while (l < i)
+free(token_array[l]), l++;
+free(token_array);
+}
+return (exit_status);
+}
+
+/**
+ * _exec - Creates a child processs to start a new programm.
+ * @cmd_list: Array of strings, each string is an agrument
+ * for the programm to execute.
+ * @i: number of arguments the user typed.
+ * @count: line counter
+ * @argv: argument vector
+ * @cmd_line: Command line passed to the function.
+ * Return: 0 if success, 1 if failed.
+ */
+
+int _exec(char **cmd_list, int i, char *cmd_line, int count, char **argv)
 {
-execvp(argv[0], argv);
+pid_t childpid;
+int status, exit_status = 0;
+struct stat st;
+char *directory, *not_command = {"it isn't a command"};
+
+switch (childpid = fork())
+{
+case -1:
+perror("fork error");
+return (1);
+case 0:
+if (stat(cmd_list[0], &st) == 0 && st.st_mode & S_IXUSR)
+{
+if (execve(cmd_list[0], cmd_list, environ) == -1)
+perror("$ Error"), exit(exit_status);
+else
+exit(EXIT_SUCCESS);
 }
 else
 {
-if (argv[i] == NULL)
-waitpid(pid, NULL, 0);
-}
-}
-}
-void get_cmd(void)
+directory = _path(cmd_list[0]);
+if (_strcmp(directory, not_command) == 0)
 {
-printf("Shell>\t");
-fgets(cmd, MAX_SIZE_CMD, stdin);
+command_not_found(i, cmd_list, count, argv), free(cmd_line);
+exit(EXIT_FAILURE);
+}
+else
+{
+if (execve(directory, cmd_list, environ) == -1)
+free(directory), perror("$ Error"), exit(exit_status);
+else
+exit(EXIT_SUCCESS);
+}
+}
+default:
+wait(&status);
+if (WIFEXITED(status))
+/**
+ * _path - Returns all the directories from PATH.
+ * @command: The first argument the user typed.
+ * Return: Directories from PATH.
+ */
 
-if ((strlen(cmd) > 0) && (cmd[strlen(cmd) - 1] == '\n'))
-cmd[strlen(cmd) - 1] = '\0';
+char *_path(char *command)
+{
+int i = 0;
+char var[] = "PATH", *path, *token, *env, *dir_temp;
 
+while (environ[i])
+{
+env = _strdup(environ[i]);
+token = strtok(env, "=");
+if (_strcmp(token, var) == 0)
+{
+token = strtok(NULL, "=");
+dir_temp = _strdup(token);
+path = directory(dir_temp, command);
+free(dir_temp);
 }
-void convert_cmd(void)
-{
-char *ptr;
-i = 0;
-ptr = strtok(cmd, " ");
-while (ptr != NULL)
-{
-argv[i] = ptr;
+free(env);
 i++;
-ptr = strtok(NULL, " ");
 }
-if (!strcmp("&", argv[i - 1]))
+return (path);
+}
+
+/**
+ * directory - Checks if the command typed by User is in fact a command.
+ * @temporal_dir: string that contains the temporal directory.
+ * @command: First command typed by user.
+ * Return: The path if the command exists, not_command if it doesnt.
+ */
+
+char *directory(char *temporal_dir, char *command)
 {
-argv[i - 1] = NULL;
-argv[i] = "&";
+char *path, *token, slash[] = {'/'}, flag = 0;
+char *not_command = {"it isn't a command"};
+struct stat st;
+
+token = strtok(temporal_dir, ":");
+while (token != NULL)
+{
+/*path = malloc(_strlen(token) + 1 + _strlen(command) + 1);*/
+path = _calloc(_strlen(token) + _strlen(command) + 2, sizeof(char));
+_strcpy(path, token);
+_strcat(path, slash);
+_strcat(path, command);
+if (stat(path, &st) == 0 && st.st_mode & S_IXUSR)
+{
+flag++;
+break;
 }
+token = strtok(NULL, ":");
+free(path);
+}
+if (flag == 1)
+return (path);
 else
-{
-argv[i] = NULL;
-}
-}
-void log_handle(int sig)
-{
-FILE *pFile;
-pFile = fopen("log.txt", "a");
-if (pFile == NULL)
-perror("Error opening file.");
-else
-fprintf(pFile, "[LOG] child proccess terminated.\n");
-fclose(pFile);
+return (not_command);
 }
