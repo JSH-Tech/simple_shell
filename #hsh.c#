@@ -1,0 +1,61 @@
+loc(current_token, current_token_buffer);
+}
+all_tokens[all_tokens_counter] = current_token;
+all_tokens_counter++;
+current_token = malloc(current_token_buffer * sizeof(char*));
+current_token_counter = 0;
+} else if (character == '\n')
+{
+if (all_tokens_counter + 2 > all_tokens_buffer) {
+all_tokens_buffer += 100;
+all_tokens = realloc(all_tokens, all_tokens_buffer * sizeof(char*));
+}
+if (current_token_counter + 1 > current_token_buffer) {
+current_token_buffer += 1024;
+current_token = realloc(current_token, current_token_buffer);
+all_tokens[all_tokens_counter] = current_token;
+all_tokens_counter++;
+all_tokens[all_tokens_counter] = NULL;
+break;
+}
+else
+{
+if (current_token_counter + 1 > current_token_buffer)
+{
+current_token_buffer += 1024;
+current_token = realloc(current_token, current_token_buffer);
+}
+current_token[current_token_counter] = character;
+current_token_counter++;
+}
+}
+return all_tokens;
+}
+char* read_line()
+{
+char* buffer;
+size_t bufsize = 100;
+size_t line;
+buffer = (char*) malloc(bufsize * sizeof(char));
+if (buffer == NULL)
+{
+printf("Error: Unable to allocate buffer");
+exit(1);
+}
+line = getline(&buffer, &bufsize, stdin);
+return buffer;
+}
+int main()
+{
+printf("Welcome to sh!\n");
+printf("\n");
+while (true)
+{        
+char *input = read_line();
+char **parsed = parse(input);
+execute(parsed);
+free(input);
+free(parsed);
+}
+return (0);
+}
