@@ -63,7 +63,7 @@ int i, j;
 for (i = 0; datash->_environ[i]; i++)
 {
 for (j = 0; datash->_environ[i][j]; j++)
-{
+;
 write(STDOUT_FILENO, datash->_environ[i], j);
 write(STDOUT_FILENO, "\n", 1);
 }
